@@ -184,4 +184,73 @@ describe("Integration Tests", function () {
 
   describe("Token URI Integration", function () {
     it("Should provide correct token URIs for multiple NFTs", async function () {
-      const baseURI = "https://
+      const baseURI = "https://api.example.com/metadata/";
+      
+      // Setup users and mint NFTs
+      await myToken.connect(owner).mint(user1.address, ethers.utils.parseEther("100"));
+      await myToken.connect(owner).mint(user2.address, ethers.utils.parseEther("100"));
+      
+      await myToken.connect(user1).approve(myNFT.address, nftPrice.mul(2));
+      await myToken.connect(user2).approve(myNFT.address, nftPrice);
+      
+      // Mint NFTs
+      await myNFT.connect(user1).mint(); // Token ID 1
+      await myNFT.connect(user1).mint(); // Token ID 2
+      await myNFT.connect(user2).mint(); // Token ID 3
+      
+      // Set base URI
+      await myNFT.connect(owner).setBaseURI(baseURI);
+      
+      // Verify token URIs
+      expect(await myNFT.tokenURI(1)).to.equal(baseURI + "1.json");
+      expect(await myNFT.tokenURI(2)).to.equal(baseURI + "2.json");
+      expect(await myNFT.tokenURI(3)).to.equal(baseURI + "3.json");
+    });
+  });
+
+  describe("Gas Optimization Tests", function () {
+    it("Should handle batch operations efficiently", async function () {
+      // Setup multiple users
+      const batchSize = 10;
+      const addresses = [];
+      const signers = await ethers.getSigners();
+      
+      for (let i = 0; i < batchSize && i < signers.length - 1; i++) {
+        addresses.push(signers[i + 1]); // Skip owner
+      }
+      
+      // Batch mint tokens to users
+      const mintAmount = ethers.utils.parseEther("100");
+      for (const addr of addresses) {
+        await myToken.connect(owner).mint(addr.address, mintAmount);
+      }
+      
+      // Batch approve and mint NFTs
+      for (const addr of addresses) {
+        await myToken.connect(addr).approve(myNFT.address, nftPrice);
+        await myNFT.connect(addr).mint();
+      }
+      
+      expect(await myNFT.totalSupply()).to.equal(addresses.length);
+    });
+  });
+
+  describe("Error Handling", function () {
+    it("Should handle various error scenarios gracefully", async function () {
+      // Test minting without any setup
+      await expect(myNFT.connect(user1).mint())
+        .to.be.revertedWith("ERC20: insufficient allowance");
+      
+      // Test with tokens but no approval
+      await myToken.connect(owner).mint(user1.address, ethers.utils.parseEther("100"));
+      await expect(myNFT.connect(user1).mint())
+        .to.be.revertedWith("ERC20: insufficient allowance");
+      
+      // Test with approval but insufficient balance
+      await myToken.connect(user1).approve(myNFT.address, nftPrice);
+      await myToken.connect(user1).transfer(owner.address, await myToken.balanceOf(user1.address));
+      await expect(myNFT.connect(user1).mint())
+        .to.be.revertedWith("ERC20: transfer amount exceeds balance");
+    });
+  });
+});
